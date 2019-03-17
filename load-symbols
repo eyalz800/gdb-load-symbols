@@ -89,6 +89,12 @@ class LoadSymbols(gdb.Command):
 
 			section_addresses[string_table(sh_name)] = base_address + sh_addr
 
+		# Remove previous symbol file.
+		try:
+			gdb.execute('remove-symbol-file {path}'.format(path=path))
+		except:
+			pass
+
 		# Add the symbol file.
 		gdb.execute('add-symbol-file {path} {textaddr} -s {sections}'.format(
 			path=path, textaddr=section_addresses['.text'],
