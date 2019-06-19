@@ -10,12 +10,18 @@ integer = type(0xffffffffffffffff)
 get_string = lambda value: str(gdb.parse_and_eval(value)) if value.startswith('$') else value
 get_number = lambda value: integer(gdb.parse_and_eval(value))
 elf_magic = 0x464c457f
+loadable_program_header = 1
 
 ELFCLASS32 = 1
 ELFCLASS64 = 2
 elf_header = (None,
     struct.Struct('xxxxBxxxxxxxxxxxHHIIIIIHHHHHH'),
     struct.Struct('xxxxBxxxxxxxxxxxHHIQQQIHHHHHH'),
+)
+
+program_header = (None,
+    struct.Struct('IIIIIIII'),
+    struct.Struct('IIQQQQQQ'),
 )
 
 section_header = (None,
@@ -65,6 +71,44 @@ class LoadSymbols(gdb.Command):
             e_shoff, e_flags, e_ehsize, e_phentsize, 
             e_phnum, e_shentsize, e_shnum, e_shstrndx) = (
                 elf_header[ELFCLASS64].unpack_from(map))
+
+        # Find first loadable program header to fetch the preferred base.
+        if e_ident_class == ELFCLASS32:
+            for program_header_index in range(e_phnum):
+                # Parse the program header.
+                (p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz,
+                p_flags, p_align) = program_header[e_ident_class].unpack_from(
+                    map, offset=(e_phoff + e_phentsize * program_header_index))
+
+                # If the program header type is not loadable, continue.
+                if p_type != loadable_program_header:
+                    continue
+
+                # Found first loadable program header, set the preferred base
+                # to the virtual address.
+                preferred_base = p_vaddr
+                break
+        else:
+            for program_header_index in range(e_phnum):
+                # Parse the program header.
+                (p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz,
+                p_memsz, p_align) = program_header[e_ident_class].unpack_from(
+                    map, offset=(e_phoff + e_phentsize * program_header_index))
+
+                # If the program header type is not loadable, continue.
+                if p_type != loadable_program_header:
+                    continue
+
+                # Found first loadable program header, set the preferred base
+                # to the virtual address.
+                preferred_base = p_vaddr
+                break
+
+        # Compute the base difference.
+        base_difference = base_address - preferred_base
+
+        # Print the base difference.
+        print("Base difference ({}): {}".format(path, hex(base_difference)))
         
         # String table section.
         (sh_name, sh_type, sh_flags, sh_addr,
@@ -84,10 +128,12 @@ class LoadSymbols(gdb.Command):
             sh_addralign, sh_entsize) = section_header[e_ident_class].unpack_from(
                 map, offset=(e_shoff + e_shentsize * section_header_index))
 
+            # If there is no address for the section, skip.
             if not sh_addr:
                 continue
 
-            section_addresses[string_table(sh_name)] = base_address + sh_addr
+            # The section absolute address is the relative address plus the base difference.
+            section_addresses[string_table(sh_name)] = base_difference + sh_addr
 
         # Remove previous symbol file.
         try:
