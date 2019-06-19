@@ -104,6 +104,9 @@ class LoadSymbols(gdb.Command):
                 preferred_base = p_vaddr
                 break
 
+        # Print the preferred base.
+        print("Preferred base ({}): {}".format(path, hex(preferred_base)))
+
         # Compute the base difference.
         base_difference = base_address - preferred_base
 
