@@ -11,6 +11,7 @@ get_string = lambda value: str(gdb.parse_and_eval(value)) if value.startswith('$
 get_number = lambda value: integer(gdb.parse_and_eval(value))
 elf_magic = 0x464c457f
 loadable_program_header = 1
+assume_nonzero_preferred_base_means_absolute_addresses = 1
 
 ELFCLASS32 = 1
 ELFCLASS64 = 2
@@ -110,8 +111,14 @@ class LoadSymbols(gdb.Command):
         # Compute the base difference.
         base_difference = base_address - preferred_base
 
-        # Print the base difference.
-        print("Base difference ({}): {}".format(path, hex(base_difference)))
+        # If nonzero preferred base, and we shall assume absolute addresses,
+        # make the base difference zero.
+        if preferred_base and assume_nonzero_preferred_base_means_absolute_addresses:
+            print("Assuming absolute addresses due to nonzero preferred base.")
+            base_difference = 0
+        else:
+            # Print the base difference.
+            print("Base difference ({}): {}".format(path, hex(base_difference)))
         
         # String table section.
         (sh_name, sh_type, sh_flags, sh_addr,
